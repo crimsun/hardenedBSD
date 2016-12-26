@@ -141,8 +141,17 @@ pax_hbsdcontrol_parse_fsea_flags(struct thread *td, struct image_params *imgp, p
 				break;
 			}
 		} else {
-			/* system defaults */
-			parsed_flags = 0;
+			switch (error) {
+			case ENOATTR:
+				/* Ignore non-existing attribute error. */
+				break;
+			default:
+				/*
+				 * For other errors, reset the parsed_flags
+				 * and use the system defaults.
+				 */
+				parsed_flags = 0;
+			}
 		}
 	}
 
