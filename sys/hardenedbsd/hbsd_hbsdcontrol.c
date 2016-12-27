@@ -127,16 +127,15 @@ pax_hbsdcontrol_parse_fsea_flags(struct thread *td, struct image_params *imgp, p
 		    pax_features[i].fs_ea_attribute, &uio, NULL, NOCRED, td);
 
 		if (error == 0) {
-			feature_status -= '0';
 			switch (feature_status) {
-			case 0:
+			case '0':
 				parsed_flags &= ~pax_features[i].feature_bit;
 				break;
-			case 1:
+			case '1':
 				parsed_flags |= pax_features[i].feature_bit;
 				break;
 			default:
-				printf("%s: unknown state: %c [%d]\n",
+				printf("%s: unknown state: %c [0x%x]\n",
 				    pax_features[i].fs_ea_attribute, feature_status, feature_status);
 				break;
 			}
