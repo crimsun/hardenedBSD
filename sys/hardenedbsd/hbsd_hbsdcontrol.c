@@ -96,19 +96,87 @@ pax_hbsdcontrol_parse_fsea_flags(struct thread *td, struct image_params *imgp, p
 	struct uio uio;
 	struct iovec iov;
 	unsigned char feature_status;
-	int error;
-	int i;
+	bool feature_present[nitems(pax_features)];
+	unsigned char *fsea_list;
+	size_t fsea_list_size;
 	pax_flag_t parsed_flags;
-
-	feature_status = 0;
-	parsed_flags = 0;
+	unsigned char entry_len;
+	int i, j;
+	int error;
 
 	if (!pax_hbsdcontrol_active()) {
 		*flags = 0;
 		return (0);
 	}
 
+	feature_status = 0;
+	fsea_list = NULL;
+	fsea_list_size = 0;
+	parsed_flags = 0;
+	for (i = 0; i < nitems(feature_present); i++)
+		feature_present[i] = false;
+
+	/* Query the size of extended attribute names list. */
+	error = VOP_LISTEXTATTR(imgp->vp, EXTATTR_NAMESPACE_SYSTEM, NULL,
+	    &fsea_list_size, NULL, td);
+
+	/*
+	 *  Fast path:
+	 *   - FS-EA not supported by the FS, or
+	 *   - other error, or
+	 *   - no FS-EA assigned for the file.
+	 */
+	if (error != 0 || fsea_list_size == 0)
+		goto out;
+
+	if (fsea_list_size > IOSIZE_MAX) {
+		error = ENOMEM;
+		goto out;
+	}
+
+	fsea_list = malloc(fsea_list_size, M_TEMP, M_WAITOK|M_ZERO);
+
+	memset(&uio, 0, sizeof(uio));
+	memset(&iov, 0, sizeof(iov));
+	iov.iov_base = fsea_list;
+	iov.iov_len = fsea_list_size;
+	uio.uio_iov = &iov;
+	uio.uio_iovcnt = 1;
+	uio.uio_offset = 0;
+	uio.uio_rw = UIO_READ;
+	uio.uio_segflg = UIO_SYSSPACE;
+	uio.uio_td = td;
+	uio.uio_resid = fsea_list_size;
+
+	/* Query the FS-EA list. */
+	error = VOP_LISTEXTATTR(imgp->vp, EXTATTR_NAMESPACE_SYSTEM, &uio, NULL, NULL, td);
+	if (error != 0)
+		goto out;
+
+	/*
+	 * Create a filter from existing hbsd.pax attributes.
+	 */
+	for (i = 0; i < fsea_list_size; ) {
+		entry_len = fsea_list[i++];
+
+		for (j = 0; pax_features[j].fs_ea_attribute != NULL; j++) {
+			if (memcmp(pax_features[j].fs_ea_attribute, &fsea_list[i],
+			    MIN(entry_len, strlen(pax_features[j].fs_ea_attribute))) == 0) {
+#ifdef DEBUG
+				printf("found: %s\n", pax_features[j].fs_ea_attribute);
+#endif
+				feature_present[j] = true;
+			}
+		}
+
+		i += entry_len;
+
+	}
+
 	for (i = 0; pax_features[i].fs_ea_attribute != NULL; i++) {
+		if (feature_present[i] == false)
+			continue;
+
 		memset(&uio, 0, sizeof(uio));
 		memset(&iov, 0, sizeof(iov));
 		feature_status = 0;
@@ -136,7 +204,8 @@ pax_hbsdcontrol_parse_fsea_flags(struct thread *td, struct image_params *imgp, p
 				break;
 			default:
 				printf("%s: unknown state: %c [0x%x]\n",
-				    pax_features[i].fs_ea_attribute, feature_status, feature_status);
+				    pax_features[i].fs_ea_attribute,
+				    feature_status, feature_status);
 				break;
 			}
 		} else {
@@ -149,10 +218,17 @@ pax_hbsdcontrol_parse_fsea_flags(struct thread *td, struct image_params *imgp, p
 				 * For other errors, reset the parsed_flags
 				 * and use the system defaults.
 				 */
-				parsed_flags = 0;
+				goto out;
 			}
 		}
 	}
+
+out:
+	free(fsea_list, M_TEMP);
+
+	/* In case of error, reset to the system defaults. */
+	if (error)
+		parsed_flags = 0;
 
 	*flags = parsed_flags;
 
