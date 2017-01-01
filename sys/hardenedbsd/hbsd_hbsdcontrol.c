@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2015-2016 Oliver Pinter <oliver.pinter@HardenedBSD.org>
+ * Copyright (c) 2015-2017 Oliver Pinter <oliver.pinter@HardenedBSD.org>
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -56,8 +56,8 @@ TUNABLE_INT("hardening.hbsdcontrol.status", &pax_hbsdcontrol_status);
 static bool pax_hbsdcontrol_active(void);
 
 struct pax_feature_entry {
-	const char	*fs_ea_attribute;
-	const uint32_t	feature_bit;
+	const char		*fs_ea_attribute;
+	const pax_flag_t	 feature_bit;
 };
 
 const struct pax_feature_entry pax_features[] = {
@@ -157,20 +157,16 @@ pax_hbsdcontrol_parse_fsea_flags(struct thread *td, struct image_params *imgp, p
 	 * Create a filter from existing hbsd.pax attributes.
 	 */
 	for (i = 0; i < fsea_list_size; ) {
+		/* See VOP_LISTEXTATTR(9) for the details. */
 		entry_len = fsea_list[i++];
 
 		for (j = 0; pax_features[j].fs_ea_attribute != NULL; j++) {
 			if (memcmp(pax_features[j].fs_ea_attribute, &fsea_list[i],
 			    MIN(entry_len, strlen(pax_features[j].fs_ea_attribute))) == 0) {
-#ifdef DEBUG
-				printf("found: %s\n", pax_features[j].fs_ea_attribute);
-#endif
 				feature_present[j] = true;
 			}
 		}
-
 		i += entry_len;
-
 	}
 
 	for (i = 0; pax_features[i].fs_ea_attribute != NULL; i++) {
