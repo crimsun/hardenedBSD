@@ -40,6 +40,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/imgact_elf.h>
 #include <sys/ktr.h>
 #include <sys/libkern.h>
+#include <sys/limits.h>
 #include <sys/namei.h>
 #include <sys/pax.h>
 #include <sys/proc.h>
